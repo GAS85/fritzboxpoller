@@ -12,7 +12,7 @@ LOCK_FILE=/tmp/fritxbox.tmp
 
 show_help() {
     echo "This script will fetch data from the FritxBox and make it Human or Cacti readeble.
-Syntax is fritxbos.sh -h?Hv
+Syntax is fritxbos.sh -h?Hv -d <IP> -p <PORT>
 
     -h, or ? for this help
     -H  will generate Human output
@@ -20,7 +20,6 @@ Syntax is fritxbos.sh -h?Hv
     -c  check Fritzbox Connectivity
     -d  device IP, default '192.168.0.1'
     -p  device Upnp Port, default '49000'
-
 
 By Georgiy Sitnikov."
 }
@@ -141,12 +140,12 @@ if [ "$getUploadDownloadTotal" = true ]; then
 
     getUploadDownloadTotalSettings
     UpnpSoapCall
-    [[ "$human" = 1 ]] && echo Upload: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewTotalBytesSent\)>\([^<]*\)<\/.*$/\2/p') bytes
-    [[ "$human" = 1 ]] && echo Download: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewTotalBytesReceived\)>\([^<]*\)<\/.*$/\2/p') bytes
+    [[ "$human" = 1 ]] && echo Upload: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewX_AVM_DE_TotalBytesSent64\)>\([^<]*\)<\/.*$/\2/p') bytes
+    [[ "$human" = 1 ]] && echo Download: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewX_AVM_DE_TotalBytesReceived64\)>\([^<]*\)<\/.*$/\2/p') bytes
     [[ "$verbose" = 1 ]] && cat $LOCK_FILE
     #For Cacti
-    UploadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewTotalBytesSent\)>\([^<]*\)<\/.*$/\2/p')
-    DownloadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewTotalBytesReceived\)>\([^<]*\)<\/.*$/\2/p')
+    UploadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewX_AVM_DE_TotalBytesSent64\)>\([^<]*\)<\/.*$/\2/p')
+    DownloadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewX_AVM_DE_TotalBytesReceived64\)>\([^<]*\)<\/.*$/\2/p')
 
 fi
 
