@@ -7,12 +7,15 @@ getExternalIP=true
 getDslSpeeds=true
 getUploadDownloadTotal=true
 getDslInformation=false
+useConstantCounters=false
 
 LOCK_FILE=/tmp/fritxbox.tmp
 
+### END CONFIG ###
+
 show_help() {
     echo "This script will fetch data from the FritxBox and make it Human or Cacti readeble.
-Syntax is fritxbos.sh -h?Hv
+Syntax is fritxbos.sh -h?Hv -d <IP> -p <PORT>
 
     -h, or ? for this help
     -H  will generate Human output
@@ -20,7 +23,7 @@ Syntax is fritxbos.sh -h?Hv
     -c  check Fritzbox Connectivity
     -d  device IP, default '192.168.0.1'
     -p  device Upnp Port, default '49000'
-
+    -n  use 'NewX_AVM_DE_TotalBytes...' instead of default 'NewTotalBytes...'
 
 By Georgiy Sitnikov."
 }
@@ -38,19 +41,28 @@ UpnpSoapCall() {
 </s:Envelope>" >$LOCK_FILE
 
     if [ "$?" -gt "0" ]; then
+
         echo Connection Problems, please check settings.
         exit 1
+
     fi
+
 }
 
 checkFritxbox() {
+
     wget -qO- --timeout=2 --tries=2 "http://$FritzBoxAddr:$UpnpPort/igddesc.xml" | sed -n 's/^.*<\(friendlyName\)>\([^<]*\)<\/.*$/\2/p'
     if [ "$?" = "0" ]; then
+
         echo Found!
+
     else
+
         echo Not found. Connection Problems, please check settings.
+
     fi
 }
+
 getExternalIPSettings() {
     # Get External IP Address
     serviceId="WANIPConn1"
@@ -86,7 +98,7 @@ OPTIND=1 # Reset in case getopts has been used previously in the shell.
 output_file=""
 verbose=0
 
-while getopts "h?Hvd:p:c" opt; do
+while getopts "h?Hvd:p:cn" opt; do
     case "$opt" in
     h | \?)
         show_help
@@ -108,12 +120,28 @@ while getopts "h?Hvd:p:c" opt; do
         checkFritxbox
         exit 0
         ;;
+    n)
+        useConstantCounters=true
+        ;;
     esac
 done
 
-shift $((OPTIND - 1))
+# https://unix.stackexchange.com/questions/214141/explain-the-shell-command-shift-optind-1
+shift "$((OPTIND - 1))"
 
 [ "${1:-}" = "--" ] && shift
+
+if [ "$useConstantCounters" = false ]; then
+
+    FritzUpload="NewTotalBytesSent"
+    FritzDownload="NewTotalBytesReceived"
+
+else
+
+    FritzUpload="NewX_AVM_DE_TotalBytesSent64"
+    FritzDownload="NewX_AVM_DE_TotalBytesReceived64"
+
+fi
 
 if [ "$getExternalIP" = true ]; then
 
@@ -128,8 +156,8 @@ if [ "$getDslSpeeds" = true ]; then
 
     getDslSpeedsSettings
     UpnpSoapCall
-    [[ "$human" = 1 ]] && echo Upload: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1UpstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') / 1000000 | bc) Mbit/s
-    [[ "$human" = 1 ]] && echo Download: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1DownstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') / 1000000 | bc) Mbit/s
+    [[ "$human" = 1 ]] && echo Upload: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1UpstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') | numfmt --to=iec)bit/s
+    [[ "$human" = 1 ]] && echo Download: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1DownstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') | numfmt --to=iec)bit/s
     [[ "$verbose" = 1 ]] && cat $LOCK_FILE
     #For Cacti
     DslSpeedUpload=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1UpstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p')
@@ -141,12 +169,12 @@ if [ "$getUploadDownloadTotal" = true ]; then
 
     getUploadDownloadTotalSettings
     UpnpSoapCall
-    [[ "$human" = 1 ]] && echo Upload: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewTotalBytesSent\)>\([^<]*\)<\/.*$/\2/p') bytes
-    [[ "$human" = 1 ]] && echo Download: $(cat $LOCK_FILE | sed -n 's/^.*<\(NewTotalBytesReceived\)>\([^<]*\)<\/.*$/\2/p') bytes
+    [[ "$human" = 1 ]] && echo Upload: $(cat $LOCK_FILE | sed -n "s/^.*<\($FritzUpload\)>\([^<]*\)<\/.*$/\2/p" | numfmt --to=iec)b
+    [[ "$human" = 1 ]] && echo Download: $(cat $LOCK_FILE | sed -n "s/^.*<\($FritzDownload\)>\([^<]*\)<\/.*$/\2/p" | numfmt --to=iec)b
     [[ "$verbose" = 1 ]] && cat $LOCK_FILE
     #For Cacti
-    UploadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewTotalBytesSent\)>\([^<]*\)<\/.*$/\2/p')
-    DownloadTotal=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewTotalBytesReceived\)>\([^<]*\)<\/.*$/\2/p')
+    UploadTotal=$(cat ${LOCK_FILE} | sed -n "s/^.*<\($FritzUpload\)>\([^<]*\)<\/.*$/\2/p")
+    DownloadTotal=$(cat ${LOCK_FILE} | sed -n "s/^.*<\($FritzDownload\)>\([^<]*\)<\/.*$/\2/p")
 
 fi
 
@@ -155,20 +183,15 @@ if [ "$getDslInformation" = true ]; then
     getDslInformationSettings
     UpnpSoapCall
     cat $LOCK_FILE
-    #	[[ "$human" = 1 ]] && echo Upload: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1UpstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') / 1000000 | bc) Mbit/s
-    #	[[ "$human" = 1 ]] && echo Download: $(echo $(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1DownstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p') / 1000000 | bc) Mbit/s
-    #	[[ "$verbose" = 1 ]] && cat $LOCK_FILE
-    #For Cacti
-#	DslSpeedUpload=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1UpstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p')
-#	DslSpeedDownload=$(cat ${LOCK_FILE} | sed -n 's/^.*<\(NewLayer1DownstreamMaxBitRate\)>\([^<]*\)<\/.*$/\2/p')
 
 fi
 
 [[ "$human" = 1 ]] || echo DslSpeedUpload:$DslSpeedUpload \
     DslSpeedDownload:$DslSpeedDownload \
-    UploadTotal:$UploadTotal \
+    UploadTotal: $UploadTotal \
     DownloadTotal:$DownloadTotal
 
 rm $LOCK_FILE
 
 exit 0
+
